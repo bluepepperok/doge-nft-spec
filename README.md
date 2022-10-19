@@ -15,18 +15,190 @@ Note that the metadata UTXO cannot be spent. Since this UTXO contains a referenc
 ##### NFT owner UTXO magic value
 
 NFT owner UTXOs have a magic value in their associated dogecoin amount: `0x0FF415`
+
 This is just above the current soft dust limit.
 
 ##### NFT burns
 
 There is no explicit burn tx format but any NFT owner UTXO expenditure that doesn't conform to one of these transaction formats results in irreversible destruction of the NFT ownership.
 
+
+#### IPFS metadata
+
+NFT metadata is meant to be hosted offchain. IPFS is the only storage solution that is supported in this version of the protocol.
+
+##### Mint descriptor
+
+The mint descriptor must be in JSON format and conform to the `Mint` type in the following snippet.
+
+```ts
+interface Mint {
+  /**
+   * NFT descriptors for each NFT minted.
+   */
+  readonly mint: readonly NftInformation[];
+  /**
+   * Collection CIDv0.
+   * All NFTs minted are part of this collection.
+   * Encoded in base64.
+   */
+  readonly collection: string;
+  /**
+   * Signature of the mint operation.
+   * This is a signature of the message formed by the nft descriptors and the collection.
+   */
+  readonly signature: MessageSignature;
+}
+
+interface NftInformation {
+  /**
+   * Name of the NFT.
+   */
+  readonly name: string;
+  /**
+   * NFT description.
+   */
+  readonly description: string;
+  /**
+   * NFT tags.
+   */
+  readonly tags?: readonly string[];
+  /**
+   * NFT image IPFS CIDv0.
+   * Encoded in base64.
+   */
+  readonly image: string;
+}
+```
+
+See [here](#messsage-signature) for a description of the `MessageSignature` type.
+
+A mint descriptor could look like this:
+
+```json
+{
+    "mint": [
+        {
+            "name": "Doge",
+            "description": "The picture of a Doge",
+            "tags": ["doge"],
+            "image": "aoofSf5I4uSt2qBYbCPBpdzJJhH15vednTgGzi5nRZE="
+        }
+    ],
+    "collection": "0inJiCXqkQ+OU08IaSdYl8Kpqkyk2MeVtTF5fesjk8k=",
+    "signature": {
+        "r": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "s": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "v": 31
+    }
+}
+```
+
+##### Collection descriptor
+
+The collection descriptor must be in JSON format and conform to the `CollectionCreate` type in the following snippet.
+
+```ts
+interface CollectionCreate {
+  readonly create: NftCollection;
+  /**
+   * Signature of the collection create operation.
+   * This is a signature of the message formed by the collection descriptor.
+   */
+  readonly signature: MessageSignature;
+}
+
+interface NftCollection {
+  /**
+   * Name of the collection.
+   */
+  readonly name: string;
+  /**
+   * Social media URLs for the collection.
+   */
+  readonly socialMedia?: {
+    readonly twitter?: string;
+    readonly discord?: string;
+    readonly webpage?: string;
+  };
+  /**
+   * Collection description.
+   */
+  readonly description: string;
+  /**
+   * Collection tags.
+   */
+  readonly tags?: readonly string[];
+  /**
+   * Collection image IPFS CIDv0.
+   * Encoded in base64.
+   */
+  readonly image: string;
+  /**
+   * Collection banner image IPFS CIDv0.
+   * Encoded in base64.
+   */
+  readonly bannerImage: string;
+}
+```
+
+See [here](#messsage-signature) for a description of the `MessageSignature` type.
+
+A collection descriptor could look like this:
+
+```json
+{
+    "create": [
+        {
+            "name": "Doges",
+            "description": "Doge-themed tokens",
+            "tags": ["doge"],
+            "socialMedia": {
+              "webpage": "https://bluepepper.io"
+            },
+            "image": "KXWybiE4Hc0zopv0Sl8TCp5fCrmCklcAyWSo1i2GxSc=",
+            "bannerImage": "A4aHn+OB0eFKHRLjrvNNGgoFidlN7okwl2feD4x/R5Y=",
+        }
+    ],
+    "signature": {
+        "r": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "s": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "v": 31
+    }
+}
+```
+
+
+##### Message signature
+
+Message signatures in the protocol must conform to the `MessageSignature` type in the following snippet.
+
+```ts
+interface MessageSignature {
+  /**
+   * R parameter of the signature.
+   * Encoded in base64.
+   */
+  readonly r: string;
+  /**
+   * S parameter of the signature.
+   * Encoded in base64.
+   */
+  readonly s: string;
+  /**
+   * Version byte of the signature.
+   * Encodes the recovery ID and the type of public key.
+   */
+  readonly v: number;
+}
+```
+
 ## Protocol
 
 We'll assume:
 - The wallet software involved in the creation of these transactions won't reorder outputs nor inputs.
 
-Note that spending an owner NFT UTXO without following the protocol described here destroys the NFT irrevocably.
+Note that spending an NFT owner UTXO without following the protocol described here destroys the NFT irrevocably.
 
 ### Mint tx
 
@@ -43,12 +215,24 @@ Mint allows a user to create a new NFT and associate metadata to it.
     1. OP_RETURN of the following 45 bytes:
         1. "DogecoinNFTv" (12 bytes)
         2. varint representing `1` (1 byte)
-        3. IPFS CIDv0 of metadata (32 bytes, this is a sha256 hash)
-    2. NFT owner UTXO
+        3. IPFS CIDv0 of mint descriptor (32 bytes, this is a sha256 hash)
+    2. NFT owner UTXOs
         - Locking script is P2PKH to NFT owner’s PKH
-        - Amount should be the [NFT owner magic value](#nft-owner-utxo-magic-value).
+        - Amount should be the [NFT owner UTXO magic value](#nft-owner-utxo-magic-value).
+        - There should be as many consecutive NFT owner UTXOs as NFT descriptors present in the mint descriptor.
     3. Change (optional, can be more than one)
+        - The first change output must not have an amount equal to the [NFT owner UTXO magic value](#nft-owner-utxo-magic-value).
 
+Note that there's a variable number of outputs in this transaction.
+
+The following must be true for the mint tx to be considered valid:
+
+- There must be enough NFT owner outputs for the NFTs listed in the mint descriptor. Each one of them must have the [NFT owner UTXO magic value](#nft-owner-utxo-magic-value) for its attached amount.
+- There must be at least one NFT in the mint descriptor.
+- The owner of all NFT owner UTXOs minted must be the signer of the mint descriptor.
+In other words, the PKH in the locking script for each of the NFT owner UTXOs generated in this tx must be the PKH of the signer of the mint descriptor.
+- The signer of the mint descriptor must be the signer of the collection referenced in the mint descriptor.
+- The first change output must not have an amount equal to the [NFT owner UTXO magic value](#nft-owner-utxo-magic-value).
 
 ### Sell offer tx
 
@@ -111,7 +295,7 @@ Transfer can be used to send an NFT without receiving anything in exchange. It i
     3. Other inputs may follow.
 - Outputs
     1. NFT owner UTXO.
-        - Locking script should be P2PKH of the receiving PKH
+        - Locking script should be P2PKH of the receiving PKH.
         - The amount associated with this output should be the [NFT owner magic value](#nft-owner-utxo-magic-value).
     2. (Optional) Change output.
     3. (Optional) Other outputs.
