@@ -232,7 +232,7 @@ The following must be true for the mint tx to be considered valid:
 - The owner of all NFT owner UTXOs minted must be the signer of the mint descriptor.
 In other words, the PKH in the locking script for each of the NFT owner UTXOs generated in this tx must be the PKH of the signer of the mint descriptor.
 - The signer of the mint descriptor must be the signer of the collection referenced in the mint descriptor.
-- The first change output must not have an amount equal to the [NFT owner UTXO magic value](#nft-owner-utxo-magic-value).
+- If the first change output is P2PKH, then it must not have an amount equal to the [NFT owner UTXO magic value](#nft-owner-utxo-magic-value).
 
 ### Sell offer tx
 
