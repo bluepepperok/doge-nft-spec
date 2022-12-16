@@ -213,7 +213,7 @@ Mint allows a user to create a new NFT and associate metadata to it.
     2. Input that pays tx fee (optional, can be more than one)
 - Outputs
     1. OP_RETURN of the following 45 bytes:
-        1. "DogecoinNFTv" (12 bytes)
+        1. "DogeNFT1170v" (12 bytes)
         2. varint representing `1` (1 byte)
         3. IPFS CIDv0 of mint descriptor (32 bytes, this is a sha256 hash)
     2. NFT owner UTXOs
